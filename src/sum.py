@@ -35,5 +35,5 @@ def sum_path_length(gcode_file_path):
     return total_path_length
 
 # Example usage
-file_path = 'C:\\Users\\Jeremy\\Downloads\\V0_3DBenchy_Stripped.gcode'
+file_path = 'C:\\Users\\User\\Documents\\OPAL-master\\gcode\\Circle_39.gcode'
 print(f'Total Path Length: {sum_path_length(file_path)}')

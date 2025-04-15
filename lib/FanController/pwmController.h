@@ -19,6 +19,9 @@
 #define PWM_BIT_RES 12
 // Signal frequency ~ 50Hz
 #define ESC_FREQ 50.5
+// PWM pins for respective components
+#define FAN_SEL 7
+#define CAM_LASER_SEL 8
 
 
  class PWMController {

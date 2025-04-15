@@ -163,26 +163,26 @@ GCodeVals parseGCodeCommand(const char *gcode) {
         vals.hasY = (next != yPtr + 1); // Check if a conversion actually happened
     }
 
-    // Find 'Z' and convert the following substring to a double
-    char *zPtr = strchr(gcode, 'Z');
-    if (zPtr != NULL) {
-        vals.z = strtod(zPtr + 1, &next);
-        vals.hasZ = (next != zPtr + 1); // Check if a conversion actually happened
-    }
+    // // Find 'Z' and convert the following substring to a double
+    // char *zPtr = strchr(gcode, 'Z');
+    // if (zPtr != NULL) {
+    //     vals.z = strtod(zPtr + 1, &next);
+    //     vals.hasZ = (next != zPtr + 1); // Check if a conversion actually happened
+    // }
 
-    // Find 'Y' and convert the following substring to a double
-    char *iPtr = strchr(gcode, 'A');
-    if (iPtr != NULL) {
-        vals.i = strtod(iPtr + 1, &next);
-        vals.hasI = (next != iPtr + 1); // Check if a conversion actually happened
-    }
+    // // Find 'Y' and convert the following substring to a double
+    // char *iPtr = strchr(gcode, 'A');
+    // if (iPtr != NULL) {
+    //     vals.i = strtod(iPtr + 1, &next);
+    //     vals.hasI = (next != iPtr + 1); // Check if a conversion actually happened
+    // }
 
-    // Find 'Y' and convert the following substring to a double
-    char *jPtr = strchr(gcode, 'B');
-    if (jPtr != NULL) {
-        vals.j = strtod(jPtr + 1, &next);
-        vals.hasJ = (next != jPtr + 1); // Check if a conversion actually happened
-    }
+    // // Find 'Y' and convert the following substring to a double
+    // char *jPtr = strchr(gcode, 'B');
+    // if (jPtr != NULL) {
+    //     vals.j = strtod(jPtr + 1, &next);
+    //     vals.hasJ = (next != jPtr + 1); // Check if a conversion actually happened
+    // }
 
     // Find 'F' and convert the following substring to a double
     char *fPtr = strchr(gcode, 'F');
@@ -206,7 +206,12 @@ void storeCommand(const char* cmd) {
     strncpy(buffer[head].command, cmd, MAX_CMD_LENGTH);
     buffer[head].valid = true;
 
-    if(strncmp(cmd, "G99", 3) == 0){          //Power enable
+
+    if(strncmp(cmd, "G1", 2) == 0){ 
+      buffer[head].code = 1; 
+    } else if (strncmp(cmd, "G0", 2) == 0){
+      buffer[head].code = 0; 
+    } else if(strncmp(cmd, "G99", 3) == 0){   //Power enable
       buffer[head].code = 99;
     } else if(strncmp(cmd, "G98", 3) == 0){   //Power disable
       buffer[head].code = 98;
@@ -216,9 +221,15 @@ void storeCommand(const char* cmd) {
       buffer[head].code = 96;
     } else if(strncmp(cmd, "G95", 3) == 0){   //Recoater sequence
       buffer[head].code = 95;
-    } else if(strncmp(cmd, "G0", 2) == 0){ 
-      buffer[head].code = 0; 
-    } else { buffer[head].code = 1; }
+    } else if(strncmp(cmd, "G94", 3) == 0){   //Recoater sequence
+      buffer[head].code = 94;
+    }
+    
+    // else if(strncmp(cmd, "G0", 2) == 0){ 
+    //   buffer[head].code = 0; 
+    // } else {
+    //    buffer[head].code = 1; 
+    // }
 
     GCodeVals values = parseGCodeCommand(cmd);
 

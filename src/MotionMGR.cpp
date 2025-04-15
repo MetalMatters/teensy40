@@ -1,5 +1,6 @@
 #include "MotionMGR.h"
 
+
 XY2_100* _galvo;
 LaserController* _laser;
 GCodeCommand* currentGcode;
@@ -12,10 +13,14 @@ MotionMGR::MotionMGR(GCodeCommand *buf)
   fan = new PWMController(FAN_PIN);
   laser5W = new PWMController(CAMERA_LASER_PIN);
 
-  // FPGA Interface pins
-  pinMode(recoater_trig, OUTPUT);
-  pinMode(hopper_trig, OUTPUT);
-  pinMode(busy_flag, INPUT);
+  motors = new MotorController();
+
+  // Triggers low for every 45um increment in layer height
+  pinMode(layer_complete_flag, INPUT_PULLUP);
+  pinMode(reset_flag, OUTPUT);
+  // Reset the layer height complete flag
+  digitalWrite(reset_flag, HIGH);
+
 }
 
 void MotionMGR::begin(XY2_100* galvo)
@@ -40,6 +45,8 @@ void MotionMGR::tic()
     default: break;
   }
   setGalvoPosition(CURRENT_CMD_X, CURRENT_CMD_Y);
+
+  motors->manualOverride();
 }
 
 bool MotionMGR::processGcodes()
@@ -55,86 +62,75 @@ bool MotionMGR::processGcodes()
   return gcodeFound;
 }
 
-/* Busy wait the echo replies sent from the 3D printer
-   control board, ensuring no other execution occurs until movement is complete */
-// void MotionMGR::awaitMovement() {
-//   String echoData = "";
-//   bool eol = false;
-
-//   while (true) {
-
-//     if (Serial2.available() > 0) {
-
-//       char ch = Serial2.read(); 
-//       echoData += ch;
-//       // End of line
-//       if (ch == '\n') {
-//         eol = true;
-//       }
-//     }
-
-//     if (eol) {
-//       //"paused" is sent as part of the keepalive message once Marlin's buffer is clear i.e. movement is complete
-//       Serial.println(echoData);
-//       if (echoData.indexOf("paused") >= 0) {
-//         break; 
-//       }
-
-//       echoData = "";
-//       eol = false;
-//     }
-//     delayMicroseconds(1);
-//   }
-// }
-
 void MotionMGR::processGcode(GCodeCommand* cmd)
 {
 
+  //Response string to be returned to the PC, updated with result of execution
+  String resp = "Error";
+
   CURRENT_CODE = cmd->code;
 
-  //Hack because I am lazy - really needs Mcode handling
+    // Feedrate
+  if(cmd->F != -1.0)  setVal(&CURRENT_F, cmd->F);
+
+    // Handle X and Y as before
+  if (cmd->X != -1.0 || cmd->Y != -1.0) {
+    // Existing handling for X and Y...
+    setXY(cmd);
+    _status = INTERPOLATING;
+    return;
+  }
+
+  //Hresp because I am lazy - really needs Mcode handling
   if(cmd->code == 99){
 
     if(cmd->P != -1.0){
-      psu->enablePSU((uint16_t)cmd->P);
+      resp = psu->enablePSU((uint16_t)cmd->P);
     } else {
-      psu->enablePSU();
+      resp = psu->enablePSU();
     }
 
-    Serial.println("ok");
+    Serial.println(resp);
 
     return;
   } else if(cmd->code == 98){
 
-    psu->disablePSU();
+    resp = psu->disablePSU();
 
-    Serial.println("ok");
+    Serial.println(resp);
 
     return;
   } else if(cmd->code == 97){
 
-    //Toggle hopper trigger
-    digitalWrite(hopper_trig, HIGH);
-    delay(5);
-    digitalWrite(hopper_trig, LOW);
-    //Wait on busy flag
-    do {
-      delay(50);
-    } while(digitalRead(busy_flag) == 1);
+    uint8_t lc_flag = digitalRead(layer_complete_flag);
+
+    // Continue movement until distance reached
+    //while(lc_flag == 1){
+
+      //Drop the build piston by the intended layer height + compensation for powder raking
+      motors->move(build_piston, BUILD_STEPS, PISTON_FREQ, REVERSE);
+      delay(500);
+      //lc_flag = digitalRead(layer_complete_flag);
+    //}
+    // Reset the layer height
+    //digitalWrite(reset_flag, LOW);
+    //delay(100);
+    //digitalWrite(reset_flag, HIGH);
+
+    // Supply the recoater with powder
+
+    motors->move(powder_piston, POWDER_STEPS, PISTON_FREQ, FORWARD);
     
     Serial.println("ok");
 
     return;
   } else if(cmd->code == 96){
- 
-    //Toggle recoater trigger
-    digitalWrite(recoater_trig, HIGH);
-    delay(5);
-    digitalWrite(recoater_trig, LOW);
-    //Wait on busy flag
-    do {
-      delay(50);
-    } while(digitalRead(busy_flag) == 1);
+    //return the build piston to its intended layer height + account for slop
+
+    motors->move(recoater_pin, RECOATER_STEPS, RECOATER_FREQ, REVERSE);
+    delay(100);
+    motors->move(recoater_pin, RECOATER_STEPS+12, RECOATER_FREQ, FORWARD);
+    delay(100);
     
     Serial.println("ok");
     
@@ -150,6 +146,8 @@ void MotionMGR::processGcode(GCodeCommand* cmd)
       fan->initPWM(1000); //1000us (Fan off)
     }
     
+    delay(200);
+
     Serial.println("ok");
     
     return;
@@ -161,64 +159,23 @@ void MotionMGR::processGcode(GCodeCommand* cmd)
       laser5W->initPWM(100);  //Inverted TTL power control, 100us/20000us (50Hz)
     }
     
+    delay(200);
+
     Serial.println("ok");
     
     return;
   }
 
-  // Feedrate
-  if(cmd->F != -1.0)  setVal(&CURRENT_F, cmd->F);
+  // // Feedrate
+  // if(cmd->F != -1.0)  setVal(&CURRENT_F, cmd->F);
 
-    // Handle X and Y as before
-  if (cmd->X != -1.0 || cmd->Y != -1.0) {
-    // Existing handling for X and Y...
-    setXY(cmd);
-    _status = INTERPOLATING;
-    return;
-  }
-
-
-  /*
-  // I,J,Z movements must complete before returning to the main loop
-  if (cmd->I != -1.0 || cmd->J != -1.0 || cmd->Z != -1.0) {
-
-    String newGcode = "G";
-    newGcode += String(cmd->code);
-
-    if (cmd->I != -1.0) {
-      newGcode += " A";
-      newGcode += String(cmd->I);
-    }
-    if (cmd->J != -1.0) {
-      newGcode += " B";
-      newGcode += String(cmd->J);
-    }
-    if (cmd->Z != -1.0) {
-      newGcode += " Z";
-      newGcode += String(cmd->Z);
-    }
-    //If feedrate was defined in this instance, forward it to stepper controller
-    if (cmd->F != -1.0) {
-      newGcode += " F";
-      newGcode += String(cmd->F);
-    }
-
-    // Echo command
-    Serial.println(newGcode);
-    // Send command to 3D printer
-    Serial2.println(newGcode);
-    // Mcodes block Marlin's buffer to generate keepalive feedback, pending gcode movements
-    Serial2.println(M0_PAUSE);
-    // BLOCKING: Prevent any other execution from occurring until the movement is complete
-    awaitMovement();
-    // Unblock Marlin's buffer / cease the generation of keepalive messages
-    Serial2.println(M108_RESUME);
-    // Signal to host that execution is complete, send next gcode
-    Serial.println("ok");
-    
-  }
-
-  */
+  //   // Handle X and Y as before
+  // if (cmd->X != -1.0 || cmd->Y != -1.0) {
+  //   // Existing handling for X and Y...
+  //   setXY(cmd);
+  //   _status = INTERPOLATING;
+  //   return;
+  // }
 }
 
 void MotionMGR::setVal(double* varToSet, double valToSet)
@@ -263,7 +220,7 @@ void MotionMGR::interpolateMove()
       isMoveFirstInterpolation = true;
       // Signal to host that execution is complete, send next gcode
       Serial.println("ok");
-      Serial.send_now();
+      //Serial.send_now();
       return;
     }
     if(CURRENT_CODE == 1)
@@ -290,7 +247,7 @@ void MotionMGR::interpolateMove()
     isMoveFirstInterpolation = true;
     // Signal to host that execution is complete, send next gcode
     Serial.println("ok");
-    Serial.send_now();
+    //Serial.send_now();
     return;
   }
   else

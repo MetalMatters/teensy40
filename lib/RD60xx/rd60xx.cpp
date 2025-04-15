@@ -5,9 +5,37 @@ RD60xxController::RD60xxController(){
   Serial1.begin(115200);
 }
 
-void RD60xxController::enablePSU(uint16_t deciAmps = DEFAULT_CURRENT){
+void RD60xxController::sendCommand(const byte* command, int length) {
+
+  Serial1.write(command, length);
+
+  Serial1.flush();
+}
+
+// Each command registered by the RD60XX PSU will emit an echo. This function will
+// pend until the passed command is echoed or return false. Recursive to account 
+// for redundant responses
+bool RD60xxController::awaitEcho(const byte* command, int length, int attempts){
+
+      byte echo[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+      // 1 second timeout by default
+      Serial1.readBytes(echo, MOD_CMD_LEN);
+      
+      if(memcmp(command, echo, length) == 0) return true;
+
+      if(attempts < 1) return awaitEcho(command, length, ++attempts);
+
+      Serial1.flush();
+
+    return false;
+      
+}
+
+String RD60xxController::enablePSU(uint16_t deciAmps = DEFAULT_CURRENT){
 
     uint8_t indx = 0;
+    uint8_t failed_attempts = 0;
 
     setCurrent(deciAmps);
 
@@ -19,17 +47,31 @@ void RD60xxController::enablePSU(uint16_t deciAmps = DEFAULT_CURRENT){
     enable[6] = (char)(0x00FF & crc);
     enable[7] = (char)((0xFF00 & crc) >> 8);
 
-    while(indx < MOD_CMD_LEN) Serial1.write(enable[indx++]);
+     //Send command, await echo (multi message), resend if not validated
+    sendCommand((const byte *)enable, MOD_CMD_LEN);
+
+    while(!awaitEcho((const byte *)enable, MOD_CMD_LEN, 0)){
+
+      failed_attempts++;
+
+      if(failed_attempts > 3) {
+        return "Failed to initialize PSU";
+      }
+
+      delay(300);
+
+      sendCommand((const byte *)enable, MOD_CMD_LEN);
+    }
 
     psuEnabled = true;
 
-    delay(200);
-
+    return "ok";
 }
 
-void RD60xxController::disablePSU(){
+String RD60xxController::disablePSU(){
 
     uint8_t indx = 0;
+    uint8_t failed_attempts = 0;
 
     disable[0] = (char)PSU_ADDR;
 
@@ -39,11 +81,25 @@ void RD60xxController::disablePSU(){
     disable[6] = (char)(0x00FF & crc);
     disable[7] = (char)((0xFF00 & crc) >> 8);
 
-    while(indx < MOD_CMD_LEN) Serial1.write(disable[indx++]);
+     //Send command, await echo (multi message), resend if not validated
+    sendCommand((const byte *)disable, MOD_CMD_LEN);
+
+    while(!awaitEcho((const byte *)disable, MOD_CMD_LEN, 0)){
+
+      failed_attempts++;
+
+      if(failed_attempts > 3) {
+        return "Failed to disable PSU";
+      }
+
+      delay(300);
+
+      sendCommand((const byte *)disable, MOD_CMD_LEN);
+    }
 
     psuEnabled = false;
 
-    delay(200);
+    return "ok";
 
 }
 

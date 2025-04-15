@@ -38,16 +38,16 @@
  #define X_MAX_POS_MM 70
  #define Y_MAX_POS_MM 70
 
- #define X_CAL 1.0
- #define Y_CAL 1.0
+ #define X_CAL 0.84465
+ #define Y_CAL 0.84465
 
-#define X_OFFSET 35
-#define Y_OFFSET 34
+#define X_OFFSET 43.5 //40.6
+#define Y_OFFSET 46.5
 
 #define INTERPOLATION_THRESHOLD_MM 0.5
 
 #define INVERSE_X
-//#define INVERSE_Y
+#define INVERSE_Y 1
 
 #define CONFIGURATION_H
 #endif

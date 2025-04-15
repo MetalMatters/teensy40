@@ -32,17 +32,26 @@
 #ifndef MOTIONMGR_h
 #define MOTIONMGR_h
 
-#include <Arduino.h>
 #include <rd60xx.h>
 #include <pwmController.h>
 #include "Helpers.h"
 #include "configuration.h"
 #include "main.h"
+#include "MotorController.h"
 
 // Fan controller pin
 #define FAN_PIN 7
 // Welding camera laser pin
 #define CAMERA_LASER_PIN 8
+
+// Piston velocity
+#define PISTON_FREQ 300
+// Recoater velocity
+#define RECOATER_FREQ 1800
+
+#define BUILD_STEPS 686  // 1um step size (2mm lead) 886 ~ 45um   ####1078
+#define POWDER_STEPS 985 // 72um step size 815 ~ 90um
+#define RECOATER_STEPS 3400
 
 
 enum MotionStatus {IDLE, INTERPOLATING};
@@ -58,6 +67,7 @@ public:
 private:
   MotionStatus _status;
   RD60xxController* psu;
+  MotorController* motors;
   PWMController*  fan;
   PWMController*  laser5W;
   void processGcode(GCodeCommand* code);
@@ -100,8 +110,10 @@ private:
   bool LASER_CHANGED = false;
 
   // FPGA interface pins
-  const static int recoater_trig = 21;  //P100
-  const static int hopper_trig = 16;  //P106
-  const static int busy_flag = 18; //P104
+  const static int active_flag = 15;
+  const static int reset_flag = 11;  //21 - P100
+  const static int layer_complete_flag = 10;  //16 - P106
+  const static int test_flag = 18; //P104
+
 };
 #endif
